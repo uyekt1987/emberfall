@@ -9,6 +9,7 @@ export const ACTION_PAUSE = 2;
 export const ACTION_DASH = 4;
 export const ACTION_MUTE = 8;
 export const ACTION_RESTART = 16;
+export const ACTION_CONTINUE = 32;
 
 const UP = new Set(['ArrowUp', 'KeyW']);
 const DOWN = new Set(['ArrowDown', 'KeyS']);
@@ -19,6 +20,7 @@ const DASH = new Set(['Space', 'ShiftLeft', 'ShiftRight']);
 const PAUSE = new Set(['KeyP', 'Escape']);
 const MUTE = new Set(['KeyM']);
 const RESTART = new Set(['KeyR']);
+const CONTINUE = new Set(['KeyC']);
 
 export function createInput(canvas, getView) {
   const keys = new Set();
@@ -42,6 +44,8 @@ export function createInput(canvas, getView) {
       if (!event.repeat) actions |= ACTION_MUTE;
     } else if (RESTART.has(event.code)) {
       if (!event.repeat) actions |= ACTION_RESTART;
+    } else if (CONTINUE.has(event.code)) {
+      if (!event.repeat) actions |= ACTION_CONTINUE;
     }
   });
   window.addEventListener('keyup', (event) => {

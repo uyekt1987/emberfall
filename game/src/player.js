@@ -1,7 +1,7 @@
 // The player: movement and dash, aim, firing, regeneration, and picking up
 // embers and stars. The main loop passes the frame's one-shot actions in.
 
-import { PLAYER, W, H } from './config.js';
+import { PLAYER, SHARD_TIME, W, H } from './config.js';
 import { firePlayer } from './bullets.js';
 import { spawnTrail } from './particles.js';
 import { sfx } from './audio.js';
@@ -78,6 +78,12 @@ export function updatePickups(state, dt) {
       if (pk.kind === 'ember') {
         p.hp = Math.min(p.maxHp, p.hp + 10);
         sfx.pickup();
+      } else if (pk.kind === 'shard') {
+        // An ember shard: +50% damage for 8 seconds, and one more on the
+        // run's shard counter. Picking up another shard refreshes the timer.
+        state.shardTimer = SHARD_TIME;
+        state.shardCount += 1;
+        sfx.shard();
       } else {
         state.starTimer = 10;
         sfx.star();

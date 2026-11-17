@@ -9,11 +9,12 @@
 // carries information — elite gold rings, health bars, the bomber fuse ring,
 // the healer pulse ring, the nova ring — is kept exactly as before.
 
-import { COLORS, H, TOTAL_WAVES, W } from './config.js';
+import { COLORS, H, TOTAL_WAVES, W, regionForWave } from './config.js';
 import { computeView } from './view.js';
 import { shakeOffset } from './particles.js';
 import { drawBackground } from './background.js';
 import { drawSprite } from './sprites.js';
+import { drawRing } from './ring.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -47,15 +48,17 @@ export function createRenderer(canvas) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const shake = shakeOffset(state);
       ctx.setTransform(view.scale, 0, 0, view.scale, view.ox + shake.x * view.scale, view.oy + shake.y * view.scale);
-      drawBackground(ctx, state.player.x, state.player.y, nowMs);
+      drawBackground(ctx, state.player.x, state.player.y, nowMs, regionForWave(Math.max(1, state.wave)));
       drawPickups(ctx, state);
       drawEnemies(ctx, state, nowMs);
       if (state.player.alive && screen !== SCREEN_TITLE) drawPlayer(ctx, state, nowMs);
+      drawRing(ctx, state);
       drawBullets(ctx, state);
       drawParticles(ctx, state);
       drawNova(ctx, state);
       drawTexts(ctx, state);
       if (screen === SCREEN_PLAY || screen === SCREEN_DRAFT || screen === SCREEN_PAUSED) drawHud(ctx, state, best);
+      if (state.regionBanner && (screen === SCREEN_PLAY || screen === SCREEN_DRAFT)) drawRegionBanner(ctx, state);
       if (screen === SCREEN_TITLE) drawTitle(ctx, state, best, nowMs);
       if (screen === SCREEN_DRAFT) drawDraft(ctx, state);
       if (screen === SCREEN_PAUSED) drawCenter(ctx, 'PAUSED', 'P or Esc to resume — M to mute');
@@ -77,6 +80,32 @@ function drawPickups(ctx, state) {
       ctx.fillStyle = '#fff3d6';
       ctx.beginPath();
       ctx.arc(pk.x, pk.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (pk.kind === 'shard') {
+      // A shard: a hot-pink diamond with a white-hot core and a soft glow,
+      // so it reads as a third pickup at a glance.
+      const glow = ctx.createRadialGradient(pk.x, pk.y, 1, pk.x, pk.y, 20);
+      glow.addColorStop(0, COLORS.shardGlow);
+      glow.addColorStop(1, 'rgba(255,46,136,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(pk.x, pk.y, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = COLORS.shard;
+      ctx.beginPath();
+      ctx.moveTo(pk.x, pk.y - 11);
+      ctx.lineTo(pk.x + 8, pk.y);
+      ctx.lineTo(pk.x, pk.y + 11);
+      ctx.lineTo(pk.x - 8, pk.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(pk.x, pk.y - 5);
+      ctx.lineTo(pk.x + 3.5, pk.y);
+      ctx.lineTo(pk.x, pk.y + 5);
+      ctx.lineTo(pk.x - 3.5, pk.y);
+      ctx.closePath();
       ctx.fill();
     } else {
       ctx.fillStyle = COLORS.star;
@@ -168,6 +197,15 @@ function drawPlayer(ctx, state, nowMs) {
   ctx.beginPath();
   ctx.arc(p.x, p.y, 58, 0, Math.PI * 2);
   ctx.fill();
+  // A shard buff wraps the warden in a hot-pink ring while +50% damage lasts.
+  if (state.shardTimer > 0) {
+    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 180);
+    ctx.strokeStyle = `rgba(255,46,136,${0.55 + pulse * 0.35})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 30 + pulse * 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   // The warden sprite, turned to face the aim. The grid faces up, so the
   // aim angle needs a quarter turn.
   drawSprite(ctx, 'player', p.x, p.y, 52, nowMs, { angle: p.angle + Math.PI / 2 });
@@ -254,10 +292,11 @@ function drawHud(ctx, state, best) {
   ctx.fillStyle = COLORS.text;
   ctx.font = FONT(15);
   ctx.fillText(`HP ${Math.ceil(p.hp)} / ${p.maxHp}`, 24, 58);
-  // Wave, centre.
+  // Wave and region, centre.
   ctx.textAlign = 'center';
   ctx.font = FONT(22);
-  ctx.fillText(`WAVE ${Math.max(1, state.wave)} / ${TOTAL_WAVES}`, W / 2, 40);
+  const region = regionForWave(Math.max(1, state.wave));
+  ctx.fillText(`WAVE ${Math.max(1, state.wave)} / ${TOTAL_WAVES} · ${region.name}`, W / 2, 40);
   const left = state.enemies.length + state.spawnQueue.length;
   ctx.font = FONT(14, 500);
   ctx.fillStyle = COLORS.dim;
@@ -280,6 +319,17 @@ function drawHud(ctx, state, best) {
     ctx.font = FONT(16);
     ctx.fillText(`2x SCORE ${Math.ceil(state.starTimer)}s`, W - 24, 108);
   }
+  // Shard buff: the damage timer, and the run's shard counter below it.
+  if (state.shardTimer > 0) {
+    ctx.fillStyle = COLORS.shard;
+    ctx.font = FONT(16);
+    ctx.fillText(`+50% DAMAGE ${Math.ceil(state.shardTimer)}s`, W - 24, state.starTimer > 0 ? 130 : 108);
+  }
+  if (state.shardCount > 0) {
+    ctx.fillStyle = COLORS.shard;
+    ctx.font = FONT(14, 500);
+    ctx.fillText(`◆ SHARDS ${state.shardCount}`, W - 24, state.shardTimer > 0 ? 152 : 130);
+  }
   // Dash, bottom left.
   ctx.textAlign = 'left';
   const dashReady = p.dashTimer <= 0;
@@ -291,16 +341,18 @@ function drawHud(ctx, state, best) {
   ctx.font = FONT(13, 500);
   ctx.fillText(dashReady ? 'DASH ready — Space' : 'DASH recharging', 24, H - 48);
   // Nova Burst, bottom left above the dash bar, once the upgrade is owned.
+  // Kept clear of the dash label below it (the label's glyphs reach ~12 px
+  // above its baseline).
   if (p.novaLevel > 0) {
     const cd = 6 - (p.novaLevel - 1) * 0.7;
     const frac = Math.max(0, Math.min(1, 1 - p.novaTimer / cd));
     ctx.fillStyle = COLORS.hpBg;
-    ctx.fillRect(24, H - 64, 120, 10);
+    ctx.fillRect(24, H - 72, 120, 10);
     ctx.fillStyle = frac >= 1 ? '#ffd27a' : COLORS.dim;
-    ctx.fillRect(24, H - 64, 120 * frac, 10);
+    ctx.fillRect(24, H - 72, 120 * frac, 10);
     ctx.fillStyle = COLORS.text;
     ctx.font = FONT(13, 500);
-    ctx.fillText(frac >= 1 ? `NOVA Lv${p.novaLevel} ready` : `NOVA Lv${p.novaLevel} charging`, 24, H - 72);
+    ctx.fillText(frac >= 1 ? `NOVA Lv${p.novaLevel} ready` : `NOVA Lv${p.novaLevel} charging`, 24, H - 80);
   }
   // Upgrades owned, bottom right.
   const owned = state.upgradesOwned;
@@ -310,6 +362,26 @@ function drawHud(ctx, state, best) {
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(`Upgrades: ${owned.length}`, W - 24, H - 48);
   }
+}
+
+function drawRegionBanner(ctx, state) {
+  const b = state.regionBanner;
+  if (!b) return;
+  // Fades in over the first half-second, holds, then fades out.
+  const age = b.dur - b.t;
+  const alpha = Math.min(1, age / 0.4, b.t / 0.6);
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = Math.max(0, alpha);
+  ctx.shadowColor = COLORS.titleGlow;
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = COLORS.lantern;
+  ctx.font = FONT(40);
+  ctx.fillText(b.name, W / 2, 150);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = COLORS.dim;
+  ctx.font = FONT(17, 500);
+  ctx.fillText('a new region — new shades, new ground', W / 2, 182);
+  ctx.globalAlpha = 1;
 }
 
 function drawCenter(ctx, title, sub) {
@@ -338,6 +410,12 @@ function drawLanternRow(ctx, cx, y, count, gap) {
   }
 }
 
+export function layoutContinue() {
+  // The Continue button on the title screen; null when there is nothing to
+  // continue from (best wave 1 or below). main.js hit-tests clicks against it.
+  return { x: W / 2 - 190, y: 470, w: 380, h: 52 };
+}
+
 function drawTitle(ctx, state, best, nowMs) {
   ctx.fillStyle = 'rgba(8,10,24,0.45)';
   ctx.fillRect(0, 0, W, H);
@@ -361,17 +439,36 @@ function drawTitle(ctx, state, best, nowMs) {
   ctx.fillStyle = COLORS.player;
   ctx.font = FONT(24);
   ctx.fillText('Click or press Space to start', W / 2, 408);
-  if (best > 0) {
+  if (best > 0 || state.bestWave > 1) {
     ctx.fillStyle = COLORS.dim;
     ctx.font = FONT(17, 500);
-    ctx.fillText(`Best score: ${best}`, W / 2, 448);
+    const parts = [];
+    if (best > 0) parts.push(`Best score: ${best}`);
+    if (state.bestWave > 1) parts.push(`Best wave: ${state.bestWave} / ${TOTAL_WAVES}`);
+    ctx.fillText(parts.join('  ·  '), W / 2, 448);
+  }
+  // Continue: resume at the best wave reached, with one random upgrade per
+  // wave skipped (see grantCatchUpUpgrades). Only offered past wave 1.
+  if (state.bestWave > 1) {
+    const r = layoutContinue();
+    ctx.fillStyle = 'rgba(20,26,51,0.92)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = COLORS.shard;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = FONT(20);
+    ctx.fillText(`CONTINUE — WAVE ${state.bestWave}`, W / 2, r.y + 33);
+    ctx.fillStyle = COLORS.dim;
+    ctx.font = FONT(14, 500);
+    ctx.fillText('Click the button, or press C', W / 2, r.y + r.h + 24);
   }
   // The warden stands below the text, flanked by two shades — the cast, in
   // one look.
-  drawSprite(ctx, 'player', W / 2, 540, 72, nowMs);
-  drawSprite(ctx, 'mote', W / 2 - 130, 552, 36, nowMs);
-  drawSprite(ctx, 'wisp', W / 2 + 130, 552, 36, nowMs);
-  drawLanternRow(ctx, W / 2, 622, 7, 26);
+  drawSprite(ctx, 'player', W / 2, 580, 72, nowMs);
+  drawSprite(ctx, 'mote', W / 2 - 130, 592, 36, nowMs);
+  drawSprite(ctx, 'wisp', W / 2 + 130, 592, 36, nowMs);
+  drawLanternRow(ctx, W / 2, 652, 7, 26);
 }
 
 export function layoutDraft() {
@@ -439,7 +536,7 @@ function drawEnd(ctx, state, best, won, nowMs) {
   ctx.fillText(`SCORE ${state.score}`, W / 2, 366);
   ctx.font = FONT(18, 500);
   ctx.fillStyle = COLORS.dim;
-  ctx.fillText(`Best ${Math.max(best, state.score)}  ·  ${state.kills} shades banished`, W / 2, 402);
+  ctx.fillText(`Best ${Math.max(best, state.score)}  ·  ${state.kills} shades banished  ·  ${state.shardCount} shard${state.shardCount === 1 ? '' : 's'} collected`, W / 2, 402);
   ctx.fillStyle = COLORS.player;
   ctx.font = FONT(22);
   ctx.fillText('Press R or click to play again', W / 2, 452);

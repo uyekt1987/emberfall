@@ -2,7 +2,7 @@
 // orbs. Collision is circle against circle; a piercing bullet remembers which
 // enemies it already hit so it cannot damage the same one twice.
 
-import { PLAYER, W, H } from './config.js';
+import { PLAYER, SHARD_DAMAGE_MULT, W, H } from './config.js';
 import { damageEnemy, damagePlayer } from './enemies.js';
 import { addText, spawnBurst } from './particles.js';
 import { sfx } from './audio.js';
@@ -11,6 +11,8 @@ export function firePlayer(state, random) {
   const p = state.player;
   const n = p.projectiles;
   const spread = 0.09;
+  // A shard buff multiplies every shot's damage while it lasts.
+  const dmg = p.damage * (state.shardTimer > 0 ? SHARD_DAMAGE_MULT : 1);
   for (let i = 0; i < n; i++) {
     const off = (i - (n - 1) / 2) * spread;
     const a = p.angle + off;
@@ -23,7 +25,7 @@ export function firePlayer(state, random) {
       vx: Math.cos(a) * PLAYER.bulletSpeed,
       vy: Math.sin(a) * PLAYER.bulletSpeed,
       r: PLAYER.bulletRadius,
-      damage: p.damage * (crit ? 2 : 1),
+      damage: dmg * (crit ? 2 : 1),
       crit,
       pierceLeft: p.pierce,
       life: 1.1,

@@ -103,6 +103,15 @@ export const UPGRADES = [
       p.novaLevel += 1;
     },
   },
+  {
+    id: 'ring',
+    name: 'Ember Ring',
+    desc: 'Orbiting flame blades that cut shades',
+    max: 3,
+    apply(p) {
+      p.ringLevel += 1;
+    },
+  },
 ];
 
 function ownedCount(state, id) {
@@ -123,4 +132,19 @@ export function rollDraft(state, random) {
 export function applyUpgrade(state, upgrade) {
   upgrade.apply(state.player);
   state.upgradesOwned.push(upgrade.id);
+}
+
+// Continue compensation: starting at wave N skips N-1 drafts, so the run
+// gets one random upgrade per skipped wave, applied immediately. The pick
+// respects each upgrade's max (a maxed upgrade leaves the pool), and when
+// the pool runs dry the run simply gets fewer — it never crashes and never
+// hands out a dead choice.
+export function grantCatchUpUpgrades(state, wave, random) {
+  const skipped = Math.max(0, wave - 1);
+  for (let i = 0; i < skipped; i++) {
+    const available = UPGRADES.filter((u) => ownedCount(state, u.id) < u.max);
+    if (available.length === 0) break;
+    const pick = available[Math.floor(random() * available.length)];
+    applyUpgrade(state, pick);
+  }
 }

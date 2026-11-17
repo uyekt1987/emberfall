@@ -6,18 +6,19 @@
 // ?seed=N fixes the random pattern. ?shot=start|play|end (with &seed=N) stages
 // that scene instead of running the loop, paints it twice and sets
 // window.__shotReady for a screenshot.
-import { BEST_KEY, COMBO_WINDOW, STEP } from './config.js';
+import { BEST_KEY, BEST_WAVE_KEY, COMBO_WINDOW, STEP } from './config.js';
 import { createRandom } from './random.js';
 import { createState, resetRun } from './state.js';
-import { ACTION_CONFIRM, ACTION_DASH, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
-import { createRenderer, layoutDraft, SCREEN_DRAFT, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
+import { ACTION_CONFIRM, ACTION_CONTINUE, ACTION_DASH, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
+import { createRenderer, layoutContinue, layoutDraft, SCREEN_DRAFT, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 import { startWave, updateWaves } from './waves.js';
 import { updateEnemies } from './enemies.js';
 import { updateBullets, updateOrbs } from './bullets.js';
 import { updatePickups, updatePlayer } from './player.js';
 import { updateNova } from './nova.js';
+import { updateRing } from './ring.js';
 import { updateParticles } from './particles.js';
-import { applyUpgrade } from './upgrades.js';
+import { applyUpgrade, grantCatchUpUpgrades } from './upgrades.js';
 import { setMuted, sfx } from './audio.js';
 import { stageShot } from './shots.js';
 
@@ -54,6 +55,22 @@ function saveBest(value) {
   }
 }
 
+function readBestWave() {
+  try {
+    return Number.parseInt(window.localStorage.getItem(BEST_WAVE_KEY) ?? '0', 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveBestWave(value) {
+  try {
+    window.localStorage.setItem(BEST_WAVE_KEY, String(value));
+  } catch {
+    // Same as the best score: without storage the best wave lasts this visit only.
+  }
+}
+
 function runShot(name) {
   const scene = stageShot(name, state, random);
   let painted = 0;
@@ -69,6 +86,8 @@ function runShot(name) {
 function runGame() {
   const input = createInput(canvas, () => renderer.getView());
   let best = readBest();
+  let bestWave = readBestWave();
+  state.bestWave = bestWave;
   let accumulator = 0;
   let last = performance.now();
 
@@ -77,11 +96,15 @@ function runGame() {
     status.textContent = message;
   }
 
-  function startGame() {
+  function startGame(wave = 1) {
     resetRun(state);
     state.best = best;
-    startWave(state, 1, random);
-    announce('Playing. Wave 1 of 10.');
+    state.bestWave = bestWave;
+    // Continue starts at the best wave reached, with one random upgrade per
+    // wave skipped — see grantCatchUpUpgrades in upgrades.js.
+    if (wave > 1) grantCatchUpUpgrades(state, wave, random);
+    startWave(state, wave, random);
+    announce(`Playing. Wave ${wave} of 10.`);
   }
 
   function endGame(won) {
@@ -89,6 +112,11 @@ function runGame() {
     if (state.score > best) {
       best = state.score;
       saveBest(best);
+    }
+    if (state.wave > bestWave) {
+      bestWave = state.wave;
+      state.bestWave = bestWave;
+      saveBestWave(bestWave);
     }
     if (won) sfx.win();
     else sfx.gameOver();
@@ -119,7 +147,19 @@ function runGame() {
       announce(state.muted ? 'Muted.' : 'Sound on.');
     }
     if (state.screen === SCREEN_TITLE) {
-      if (actions & (ACTION_CONFIRM | ACTION_DASH)) startGame();
+      // C continues at the best wave; a click on the Continue button does
+      // the same; anything else on the title starts a fresh run at wave 1.
+      if (actions & ACTION_CONTINUE) {
+        if (bestWave > 1) startGame(bestWave);
+      } else if (actions & (ACTION_CONFIRM | ACTION_DASH)) {
+        const m = input.mouse();
+        const r = layoutContinue();
+        if (bestWave > 1 && m.x >= r.x && m.x <= r.x + r.w && m.y >= r.y && m.y <= r.y + r.h) {
+          startGame(bestWave);
+        } else {
+          startGame(1);
+        }
+      }
     } else if (state.screen === SCREEN_PLAY) {
       if (actions & ACTION_PAUSE) {
         state.screen = SCREEN_PAUSED;
@@ -160,8 +200,14 @@ function runGame() {
       if (state.comboTimer <= 0) state.combo = 0;
     }
     if (state.starTimer > 0) state.starTimer -= dt;
+    if (state.shardTimer > 0) state.shardTimer -= dt;
+    if (state.regionBanner) {
+      state.regionBanner.t -= dt;
+      if (state.regionBanner.t <= 0) state.regionBanner = null;
+    }
     updatePlayer(state, dt, input, actions, random);
     updateNova(state, dt, random);
+    updateRing(state, dt, random);
     updateEnemies(state, dt, random);
     updateBullets(state, dt, random);
     updateOrbs(state, dt);

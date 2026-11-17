@@ -14,10 +14,14 @@ export function createState() {
     spawnTimer: 0,
     score: 0,
     best: 0,
+    bestWave: 0, // highest wave ever reached, across runs (localStorage)
     combo: 0,
     comboTimer: 0,
     kills: 0,
     starTimer: 0,
+    shardTimer: 0, // seconds left of the +50% damage buff from a shard
+    shardCount: 0, // shards collected this run
+    regionBanner: null, // {name, t} while a region-crossing banner is on screen
     shake: 0,
     novaFx: null, // {x, y, maxR, t, dur} while a nova ring expands
     hitStop: 0, // seconds the world freezes on elite/boss kills
@@ -46,6 +50,8 @@ export function createState() {
       regen: 0,
       novaLevel: 0,
       novaTimer: 0,
+      ringLevel: 0, // Ember Ring upgrade: orbiting blades, 0 = not owned
+      ringAngle: 0, // current orbit angle of the ring blades
       alive: true,
     },
     enemies: [],
@@ -62,6 +68,7 @@ export function createState() {
 export function resetRun(state) {
   const fresh = createState();
   fresh.best = state.best;
+  fresh.bestWave = state.bestWave;
   fresh.muted = state.muted;
   Object.keys(fresh).forEach((k) => {
     state[k] = fresh[k];

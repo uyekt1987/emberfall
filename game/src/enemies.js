@@ -1,7 +1,7 @@
 // Enemies: spawn, movement AI per type, the boss, and what happens when one
 // dies (score, combo, drops, splitting). Contact damage lives here too.
 
-import { COLORS, COMBO_STEP, COMBO_WINDOW, EMBER_DROP_CHANCE, ENEMY, STAR_DROP_CHANCE, W, H } from './config.js';
+import { COLORS, COMBO_STEP, COMBO_WINDOW, EMBER_DROP_CHANCE, ENEMY, SHARD_DROP_CHANCE, STAR_DROP_CHANCE, W, H } from './config.js';
 import { addShake, addText, spawnBurst } from './particles.js';
 import { sfx } from './audio.js';
 
@@ -38,6 +38,9 @@ export function spawnEnemy(state, type, x, y, wave, isElite = false) {
     // Healer: cooldown between heal pulses, and the visible ring timer.
     healCd: 1.5 + Math.random(),
     healPulse: 0,
+    // Ember Ring: per-enemy cooldown so one orbiting blade cannot shred the
+    // same shade every frame.
+    ringCd: 0,
     elite: false,
   };
   if (isElite) {
@@ -112,7 +115,14 @@ function dropPickup(state, x, y, random) {
     state.pickups.push({ kind: 'ember', x, y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
   } else if (roll < EMBER_DROP_CHANCE + STAR_DROP_CHANCE) {
     state.pickups.push({ kind: 'star', x, y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
+  } else if (roll < EMBER_DROP_CHANCE + STAR_DROP_CHANCE + SHARD_DROP_CHANCE) {
+    // A shard: +50% damage for 8 seconds once picked up.
+    state.pickups.push({ kind: 'shard', x, y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
   }
+}
+
+function dropShard(state, x, y, random) {
+  state.pickups.push({ kind: 'shard', x, y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
 }
 
 export function damageEnemy(state, enemy, dmg, random) {
@@ -127,9 +137,10 @@ export function damageEnemy(state, enemy, dmg, random) {
   spawnBurst(state, enemy.x, enemy.y, COLORS[enemy.type] || '#ffffff', 16, 220, 0.6, 4);
   sfx.die();
   if (enemy.elite) {
-    // Elites always drop an ember, and often a star too — better than a
-    // normal kill. The kill also freezes the world for a beat (hit stop).
+    // Elites always drop an ember and a shard, and often a star too — better
+    // than a normal kill. The kill also freezes the world for a beat (hit stop).
     state.pickups.push({ kind: 'ember', x: enemy.x, y: enemy.y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
+    dropShard(state, enemy.x, enemy.y, random);
     if (random() < 0.25) {
       state.pickups.push({ kind: 'star', x: enemy.x, y: enemy.y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
     }
@@ -152,6 +163,8 @@ export function damageEnemy(state, enemy, dmg, random) {
     state.hitStop = 0.12;
     addShake(state, 12);
     spawnBurst(state, enemy.x, enemy.y, COLORS.boss, 60, 320, 0.9, 5);
+    // The Hollow King always leaves a shard behind for the warden.
+    dropShard(state, enemy.x, enemy.y, random);
   }
   const idx = state.enemies.indexOf(enemy);
   if (idx >= 0) state.enemies.splice(idx, 1);
@@ -206,6 +219,7 @@ export function updateEnemies(state, dt, random) {
     if (!e) continue;
     e.t += dt;
     if (e.touchCd > 0) e.touchCd -= dt;
+    if (e.ringCd > 0) e.ringCd -= dt;
     if (e.healPulse > 0) e.healPulse -= dt;
     const dx = p.x - e.x;
     const dy = p.y - e.y;

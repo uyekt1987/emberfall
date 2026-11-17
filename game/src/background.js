@@ -16,27 +16,31 @@
 // position relative to the arena centre (the ground is the playfield, so it
 // stays fixed). Drifting embers float over everything, slow and deterministic.
 
-import { COLORS, H, W } from './config.js';
+import { H, REGIONS, W } from './config.js';
 import { createRandom } from './random.js';
 
+// The scatter below stores palette *indices*, not colours: the region table
+// in config.js resolves them at draw time, so the same garden layout wears
+// the Lantern Garden greens, the Ember Fields scorched earth, or the Hollow
+// Deep violet floor depending on the active wave's region.
+
 const rng = createRandom(20261117);
-const pick = (arr) => arr[Math.floor(rng() * arr.length)];
 
 // --- seeded scatter (built once, same every run) ----------------------------
 
-// Grass tufts: small clusters of 3 blades, two dark greens.
+// Grass tufts: small clusters of 3 blades, two greens from the region palette.
 const GRASS = [];
 for (let i = 0; i < 110; i++) {
   GRASS.push({
     x: 30 + rng() * (W - 60),
     y: 70 + rng() * (H - 120),
     s: 0.7 + rng() * 0.9,
-    c: rng() < 0.5 ? COLORS.grass : COLORS.grassDark,
+    c: rng() < 0.5 ? 0 : 1,
     lean: (rng() - 0.5) * 4,
   });
 }
 
-// Stones: small flat grey ellipses.
+// Stones: small flat grey ellipses, three tones from the region palette.
 const STONES = [];
 for (let i = 0; i < 26; i++) {
   STONES.push({
@@ -44,7 +48,7 @@ for (let i = 0; i < 26; i++) {
     y: 80 + rng() * (H - 140),
     rx: 3 + rng() * 5,
     ry: 2 + rng() * 3,
-    c: pick([COLORS.stone, '#454b73', '#2e3352']),
+    c: Math.floor(rng() * 3),
   });
 }
 
@@ -55,8 +59,7 @@ for (let i = 0; i < 15; i++) {
     x: 40 + rng() * (W - 80),
     y: 90 + rng() * (H - 160),
     s: 0.8 + rng() * 0.7,
-    cap: rng() < 0.6 ? COLORS.mushroom : '#a5f2c0',
-    glow: rng() < 0.6 ? COLORS.mushroomGlow : 'rgba(165,242,192,0.22)',
+    cap: rng() < 0.6 ? 0 : 1,
   });
 }
 
@@ -64,11 +67,11 @@ for (let i = 0; i < 15; i++) {
 // the left and right edges so the garden feels enclosed.
 const TREES = [];
 for (let x = 20; x < W; x += 90 + rng() * 60) {
-  TREES.push({ x, y: -6, r: 42 + rng() * 36, c: pick([COLORS.tree, COLORS.treeEdge]) });
+  TREES.push({ x, y: -6, r: 42 + rng() * 36, c: rng() < 0.5 ? 0 : 1 });
 }
 for (let y = 120; y < H - 60; y += 130 + rng() * 70) {
-  TREES.push({ x: -8, y, r: 34 + rng() * 26, c: COLORS.tree });
-  TREES.push({ x: W + 8, y: y + 60, r: 34 + rng() * 26, c: COLORS.treeEdge });
+  TREES.push({ x: -8, y, r: 34 + rng() * 26, c: 0 });
+  TREES.push({ x: W + 8, y: y + 60, r: 34 + rng() * 26, c: 1 });
 }
 
 // Dim lanterns hanging among the far trees.
@@ -107,27 +110,27 @@ for (let i = 0; i < 20; i++) {
 
 // --- layers -----------------------------------------------------------------
 
-function drawSky(ctx) {
+function drawSky(ctx, region) {
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, COLORS.skyTop);
-  g.addColorStop(0.55, COLORS.bg1);
-  g.addColorStop(1, COLORS.skyHorizon);
+  g.addColorStop(0, region.skyTop);
+  g.addColorStop(0.55, region.bg1);
+  g.addColorStop(1, region.skyHorizon);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   // A low warm band on the horizon, like the last light of the garden.
   const band = ctx.createLinearGradient(0, H - 190, 0, H);
-  band.addColorStop(0, 'rgba(255,150,60,0)');
-  band.addColorStop(1, 'rgba(255,150,60,0.10)');
+  band.addColorStop(0, `rgba(${region.horizonGlow},0)`);
+  band.addColorStop(1, `rgba(${region.horizonGlow},0.10)`);
   ctx.fillStyle = band;
   ctx.fillRect(0, H - 190, W, 190);
 }
 
-function drawFarLayer(ctx, ox, oy, nowMs) {
+function drawFarLayer(ctx, ox, oy, nowMs, region) {
   ctx.save();
   ctx.translate(-ox, -oy);
   // Tree canopies.
   for (const t of TREES) {
-    ctx.fillStyle = t.c;
+    ctx.fillStyle = t.c === 0 ? region.tree : region.treeEdge;
     ctx.beginPath();
     ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
     ctx.fill();
@@ -139,7 +142,7 @@ function drawFarLayer(ctx, ox, oy, nowMs) {
     ctx.fill();
   }
   // Garden fence: a rail and slats just below the top tree line.
-  ctx.fillStyle = COLORS.fence;
+  ctx.fillStyle = region.fence;
   ctx.fillRect(0, 58, W, 4);
   for (let x = 24; x < W; x += 48) {
     ctx.fillRect(x, 44, 5, 22);
@@ -155,7 +158,7 @@ function drawFarLayer(ctx, ox, oy, nowMs) {
   ctx.restore();
 }
 
-function drawLanternPost(ctx, x, y, nowMs, phase) {
+function drawLanternPost(ctx, x, y, nowMs, phase, region) {
   // Warm pool of light on the ground first, then the post, then the lantern.
   const breathe = 0.5 + 0.5 * Math.sin(nowMs / 900 + phase);
   const pool = ctx.createRadialGradient(x, y + 26, 2, x, y + 26, 74);
@@ -166,14 +169,16 @@ function drawLanternPost(ctx, x, y, nowMs, phase) {
   ctx.ellipse(x, y + 26, 74, 30, 0, 0, Math.PI * 2);
   ctx.fill();
   // Post.
-  ctx.fillStyle = COLORS.post;
+  ctx.fillStyle = region.fence;
   ctx.fillRect(x - 3, y - 34, 6, 62);
   ctx.fillRect(x - 8, y + 26, 16, 4);
-  // Hanging lantern: dark frame, amber glass, white-hot core.
+  // Hanging lantern: dark frame, region-tinted glass, white-hot core.
   ctx.fillStyle = '#241a33';
   ctx.fillRect(x - 9, y - 48, 18, 20);
-  ctx.fillStyle = `rgba(255,190,90,${0.75 + breathe * 0.25})`;
+  ctx.fillStyle = region.lantern;
+  ctx.globalAlpha = 0.75 + breathe * 0.25;
   ctx.fillRect(x - 6, y - 45, 12, 14);
+  ctx.globalAlpha = 1;
   ctx.fillStyle = '#fff3d6';
   ctx.fillRect(x - 2, y - 42, 4, 8);
   // Halo around the lantern itself.
@@ -186,10 +191,10 @@ function drawLanternPost(ctx, x, y, nowMs, phase) {
   ctx.fill();
 }
 
-function drawGround(ctx) {
+function drawGround(ctx, region) {
   // Grass tufts: three short blades each.
   for (const g of GRASS) {
-    ctx.strokeStyle = g.c;
+    ctx.strokeStyle = g.c === 0 ? region.grass : region.grassDark;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(g.x - 3 * g.s, g.y);
@@ -201,16 +206,18 @@ function drawGround(ctx) {
     ctx.stroke();
   }
   // Stones.
+  const stoneCols = [region.stone, region.stone2, region.stone3];
   for (const s of STONES) {
-    ctx.fillStyle = s.c;
+    ctx.fillStyle = stoneCols[s.c];
     ctx.beginPath();
     ctx.ellipse(s.x, s.y, s.rx, s.ry, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   // Glow mushrooms.
   for (const m of SHROOMS) {
+    const glow = m.cap === 0 ? region.mushroomGlow : region.mushroomGlow2;
     const halo = ctx.createRadialGradient(m.x, m.y - 4 * m.s, 1, m.x, m.y - 4 * m.s, 16 * m.s);
-    halo.addColorStop(0, m.glow);
+    halo.addColorStop(0, glow);
     halo.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = halo;
     ctx.beginPath();
@@ -218,18 +225,18 @@ function drawGround(ctx) {
     ctx.fill();
     ctx.fillStyle = '#e8f6ff';
     ctx.fillRect(m.x - 1.5 * m.s, m.y - 5 * m.s, 3 * m.s, 5 * m.s);
-    ctx.fillStyle = m.cap;
+    ctx.fillStyle = m.cap === 0 ? region.mushroom : region.mushroom2;
     ctx.beginPath();
     ctx.arc(m.x, m.y - 5 * m.s, 4.5 * m.s, Math.PI, 0);
     ctx.fill();
   }
 }
 
-function drawEmbers(ctx, nowMs) {
+function drawEmbers(ctx, nowMs, region) {
   for (const e of EMBERS) {
     const x = ((e.seed + nowMs * e.speed) % (W + 40)) - 20;
     const y = e.y0 + Math.sin(nowMs / 1400 + e.seed) * 9;
-    ctx.fillStyle = `rgba(255,157,46,${e.alpha})`;
+    ctx.fillStyle = `rgba(${region.drift},${e.alpha})`;
     ctx.beginPath();
     ctx.arc(x, y, e.size, 0, Math.PI * 2);
     ctx.fill();
@@ -248,19 +255,21 @@ function drawVignette(ctx) {
 
 // Paints the whole arena behind the entities. playerX/playerY drive the
 // parallax: far layers move least, mid layers a little more, the ground not
-// at all (it is the playfield). Deterministic for fixed inputs.
-export function drawBackground(ctx, playerX, playerY, nowMs) {
+// at all (it is the playfield). Deterministic for fixed inputs. The region
+// (from the wave number) picks the palette; pass REGIONS[0] for the title
+// screen, where no wave is running yet.
+export function drawBackground(ctx, playerX, playerY, nowMs, region = REGIONS[0]) {
   const dx = playerX - W / 2;
   const dy = playerY - H / 2;
-  drawSky(ctx);
-  drawFarLayer(ctx, dx * 0.03, dy * 0.03, nowMs);
+  drawSky(ctx, region);
+  drawFarLayer(ctx, dx * 0.03, dy * 0.03, nowMs, region);
   ctx.save();
   ctx.translate(-dx * 0.06, -dy * 0.06);
   for (let i = 0; i < POSTS.length; i++) {
-    drawLanternPost(ctx, POSTS[i].x, POSTS[i].y, nowMs, i * 1.7);
+    drawLanternPost(ctx, POSTS[i].x, POSTS[i].y, nowMs, i * 1.7, region);
   }
   ctx.restore();
-  drawGround(ctx);
-  drawEmbers(ctx, nowMs);
+  drawGround(ctx, region);
+  drawEmbers(ctx, nowMs, region);
   drawVignette(ctx);
 }

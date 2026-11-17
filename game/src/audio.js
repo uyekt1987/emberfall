@@ -95,6 +95,11 @@ export const sfx = {
     tone(660, 0.1, 'sine', 0.08, 990);
     setTimeout(() => tone(990, 0.12, 'sine', 0.07, 1320), 70);
   },
+  shard() {
+    // A shard pickup: a bright two-note chime, higher than the star's.
+    tone(1047, 0.09, 'sine', 0.09, 1568);
+    setTimeout(() => tone(1568, 0.14, 'sine', 0.08, 2093), 80);
+  },
   dash() {
     noise(0.1, 0.07, 2400);
   },

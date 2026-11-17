@@ -10,7 +10,8 @@ import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js'
 export function stageShot(name, state, random) {
   if (name === 'start') {
     state.screen = SCREEN_TITLE;
-    state.best = 0;
+    state.best = 3420;
+    state.bestWave = 6; // a past run reached wave 6: best wave + Continue show
     const spots = [
       ['mote', 300, 220],
       ['wisp', 980, 200],
@@ -22,18 +23,23 @@ export function stageShot(name, state, random) {
       ['healer', 520, 160],
       ['mote', 1080, 580, true], // elite: gold outline + gold ring on show
     ];
-    for (const [type, x, y] of spots) spawnEnemy(state, type, x, y, 3);
-    return { screen: SCREEN_TITLE, best: 0 };
+    for (const [type, x, y, elite] of spots) spawnEnemy(state, type, x, y, 3, !!elite);
+    return { screen: SCREEN_TITLE, best: 3420 };
   }
   if (name === 'play') {
     state.screen = SCREEN_PLAY;
-    state.wave = 4;
+    state.wave = 4; // first wave of region 2, The Ember Fields — scorched palette
     state.waveState = 'fighting';
     state.score = 1250;
     state.combo = 12;
     state.comboTimer = 2.1;
     state.kills = 87;
     state.best = 3420;
+    state.bestWave = 6;
+    // The region-crossing banner, mid-fade, and a live shard buff.
+    state.regionBanner = { name: 'THE EMBER FIELDS', t: 1.8, dur: 2.5 };
+    state.shardTimer = 5.2;
+    state.shardCount = 3;
     state.player.hp = 78;
     state.player.x = 640;
     state.player.y = 380;
@@ -42,6 +48,9 @@ export function stageShot(name, state, random) {
     // Nova Burst level 1, mid-ring, so the gold ring reads in the shot.
     state.player.novaLevel = 1;
     state.novaFx = { x: 640, y: 380, maxR: 170, t: 0.2, dur: 0.45 };
+    // Ember Ring level 1: two orbiting blades around the warden.
+    state.player.ringLevel = 1;
+    state.player.ringAngle = 0.7;
     const foes = [
       ['mote', 820, 300],
       ['mote', 760, 420],
@@ -84,6 +93,7 @@ export function stageShot(name, state, random) {
     state.orbs.push({ x: 900, y: 420, vx: -140, vy: 60, r: 6, damage: 10, life: 3 });
     state.pickups.push({ kind: 'ember', x: 520, y: 470, vx: 0, vy: 0, life: 12 });
     state.pickups.push({ kind: 'star', x: 780, y: 180, vx: 0, vy: 0, life: 12 });
+    state.pickups.push({ kind: 'shard', x: 560, y: 250, vx: 0, vy: 0, life: 12 });
     spawnBurst(state, 820, 300, '#7ee0ff', 8, 160, 0.6, 3);
     spawnBurst(state, 700, 540, '#9d8cff', 6, 140, 0.5, 3);
     return { screen: SCREEN_PLAY, best: 3420 };
@@ -94,7 +104,9 @@ export function stageShot(name, state, random) {
   state.waveState = 'clear';
   state.score = 8420;
   state.best = 8420;
+  state.bestWave = 10;
   state.kills = 156;
+  state.shardCount = 7;
   state.combo = 0;
   state.player.x = 640;
   state.player.y = 360;
