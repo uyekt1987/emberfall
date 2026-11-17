@@ -4,7 +4,7 @@
 
 import { PLAYER, W, H } from './config.js';
 import { damageEnemy, damagePlayer } from './enemies.js';
-import { spawnBurst } from './particles.js';
+import { addText, spawnBurst } from './particles.js';
 import { sfx } from './audio.js';
 
 export function firePlayer(state, random) {
@@ -44,12 +44,16 @@ export function updateBullets(state, dt, random) {
     if (!dead) {
       for (let j = state.enemies.length - 1; j >= 0; j--) {
         const e = state.enemies[j];
+        // A chain explosion may have removed this slot mid-loop.
+        if (!e) continue;
         if (b.hit.has(e)) continue;
         const dx = e.x - b.x;
         const dy = e.y - b.y;
         if (dx * dx + dy * dy < (e.r + b.r) * (e.r + b.r)) {
           b.hit.add(e);
           damageEnemy(state, e, b.damage, random);
+          // Floating damage number at the impact point; crits are bigger and amber.
+          addText(state, b.x, b.y - 8, String(Math.round(b.damage)), b.crit ? '#ff9d2e' : '#ffffff', b.crit ? 17 : 13);
           spawnBurst(state, b.x, b.y, '#ffe9a8', 2, 90, 0.25, 2);
           if (b.pierceLeft > 0) {
             b.pierceLeft -= 1;

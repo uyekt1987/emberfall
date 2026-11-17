@@ -4,6 +4,7 @@
 import { ENEMY, TOTAL_WAVES, WAVE_BUDGET, W, H } from './config.js';
 import { spawnEnemy } from './enemies.js';
 import { rollDraft } from './upgrades.js';
+import { addText } from './particles.js';
 import { sfx } from './audio.js';
 
 const COSTS = [
@@ -12,14 +13,16 @@ const COSTS = [
   ['spitter', ENEMY.spitter.cost],
   ['splitter', ENEMY.splitter.cost],
   ['husk', ENEMY.husk.cost],
+  ['bomber', ENEMY.bomber.cost],
+  ['healer', ENEMY.healer.cost],
 ];
 
 // Which types may appear by wave, so the early game stays readable.
 function allowedTypes(wave) {
   const types = ['mote'];
   if (wave >= 2) types.push('wisp');
-  if (wave >= 3) types.push('spitter');
-  if (wave >= 4) types.push('splitter');
+  if (wave >= 3) types.push('spitter', 'bomber');
+  if (wave >= 4) types.push('splitter', 'healer');
   if (wave >= 5) types.push('husk');
   return types;
 }
@@ -86,7 +89,11 @@ export function updateWaves(state, dt, random) {
     if (state.spawnTimer <= 0 && state.spawnQueue.length > 0) {
       const type = state.spawnQueue.shift();
       const p = edgePoint(state, random);
-      spawnEnemy(state, type, p.x, p.y, state.wave);
+      // From wave 5, 8% of non-boss spawns come out elite: triple HP, bigger,
+      // worth triple score — and they drop an ember when they die.
+      const isElite = state.wave >= 5 && type !== 'boss' && random() < 0.08;
+      spawnEnemy(state, type, p.x, p.y, state.wave, isElite);
+      if (isElite) addText(state, p.x, p.y - 24, 'ELITE!', '#ffd700', 16);
       state.spawnTimer = 0.45 + random() * 0.35;
     }
     if (state.spawnQueue.length === 0) state.waveState = 'fighting';

@@ -76,6 +76,14 @@ export const sfx = {
     noise(0.16, 0.12, 900);
     tone(180, 0.14, 'sawtooth', 0.05, 60);
   },
+  explode() {
+    noise(0.25, 0.16, 600);
+    tone(120, 0.25, 'sawtooth', 0.08, 40);
+  },
+  nova() {
+    tone(523, 0.18, 'sine', 0.09, 1047);
+    noise(0.12, 0.06, 3000);
+  },
   playerHit() {
     tone(140, 0.18, 'sawtooth', 0.1, 70);
     noise(0.12, 0.1, 500);

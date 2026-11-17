@@ -23,6 +23,8 @@ export const COLORS = {
   spitter: '#ff6b9d',
   splitter: '#7dffb0',
   husk: '#ff5d5d',
+  bomber: '#ff8c1a',
+  healer: '#b8ff2e',
   boss: '#e0aaff',
   text: '#f2f4ff',
   dim: '#9aa3c7',
@@ -56,6 +58,8 @@ export const ENEMY = {
   spitter: { hp: 20, speed: 72, r: 12, damage: 10, score: 20, cost: 3 },
   splitter: { hp: 30, speed: 88, r: 14, damage: 12, score: 25, cost: 3 },
   husk: { hp: 60, speed: 55, r: 20, damage: 16, score: 30, cost: 5 },
+  bomber: { hp: 25, speed: 95, r: 13, damage: 14, score: 25, cost: 3 },
+  healer: { hp: 20, speed: 60, r: 11, damage: 6, score: 25, cost: 3 },
   boss: { hp: 1200, speed: 62, r: 46, damage: 20, score: 1000, cost: 0 },
 };
 

@@ -15,6 +15,7 @@ import { startWave, updateWaves } from './waves.js';
 import { updateEnemies } from './enemies.js';
 import { updateBullets, updateOrbs } from './bullets.js';
 import { updatePickups, updatePlayer } from './player.js';
+import { updateNova } from './nova.js';
 import { updateParticles } from './particles.js';
 import { applyUpgrade } from './upgrades.js';
 import { setMuted, sfx } from './audio.js';
@@ -147,6 +148,12 @@ function runGame() {
 
   function step(dt, actions) {
     if (state.screen !== SCREEN_PLAY) return;
+    // Hit stop: an elite or boss kill freezes the world for a beat while the
+    // renderer keeps painting, so the impact reads.
+    if (state.hitStop > 0) {
+      state.hitStop -= dt;
+      return;
+    }
     state.time += dt;
     if (state.comboTimer > 0) {
       state.comboTimer -= dt;
@@ -154,6 +161,7 @@ function runGame() {
     }
     if (state.starTimer > 0) state.starTimer -= dt;
     updatePlayer(state, dt, input, actions, random);
+    updateNova(state, dt, random);
     updateEnemies(state, dt, random);
     updateBullets(state, dt, random);
     updateOrbs(state, dt);

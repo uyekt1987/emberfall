@@ -5,7 +5,7 @@ import { COLORS, COMBO_STEP, COMBO_WINDOW, EMBER_DROP_CHANCE, ENEMY, STAR_DROP_C
 import { addShake, addText, spawnBurst } from './particles.js';
 import { sfx } from './audio.js';
 
-export function spawnEnemy(state, type, x, y, wave) {
+export function spawnEnemy(state, type, x, y, wave, isElite = false) {
   const base = ENEMY[type];
   const hpScale = 1 + 0.08 * (wave - 1);
   const speedScale = 1 + 0.03 * (wave - 1);
@@ -30,10 +30,69 @@ export function spawnEnemy(state, type, x, y, wave) {
     summonTimer: 8,
     chargeX: 0,
     chargeY: 0,
+    // Bomber: armed countdown to self-destruct, and a re-entry guard so one
+    // bomber never explodes twice (its own death and a chain blast).
+    armed: false,
+    fuse: 0,
+    exploding: false,
+    // Healer: cooldown between heal pulses, and the visible ring timer.
+    healCd: 1.5 + Math.random(),
+    healPulse: 0,
+    elite: false,
   };
+  if (isElite) {
+    enemy.hp *= 3;
+    enemy.maxHp *= 3;
+    enemy.r = Math.round(enemy.r * 1.35);
+    enemy.score *= 3;
+    enemy.speed *= 0.95;
+    enemy.damage += 2;
+    enemy.elite = true;
+  }
   state.enemies.push(enemy);
   if (type === 'boss') state.boss = enemy;
   return enemy;
+}
+
+// A bomber's explosion: the bomber is removed from the array BEFORE the AoE
+// damage runs, so a chain blast that kills another bomber cannot loop back
+// onto one that is already gone. Each chained bomber explodes once, then the
+// chain ends because every bomber in range has already been removed.
+function explodeBomber(state, enemy, random) {
+  if (enemy.exploding) return;
+  enemy.exploding = true;
+  const idx = state.enemies.indexOf(enemy);
+  if (idx >= 0) state.enemies.splice(idx, 1);
+  const R = 110;
+  spawnBurst(state, enemy.x, enemy.y, COLORS.bomber, 30, 320, 0.7, 5);
+  spawnBurst(state, enemy.x, enemy.y, '#ffffff', 10, 200, 0.4, 3);
+  addShake(state, 8);
+  sfx.explode();
+  const p = state.player;
+  if (p.alive) {
+    const d = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+    if (d < R + 16) damagePlayer(state, enemy.damage);
+  }
+  for (const other of [...state.enemies]) {
+    const d = Math.hypot(other.x - enemy.x, other.y - enemy.y);
+    if (d < R + other.r) damageEnemy(state, other, 30, random);
+  }
+}
+
+// A healer's pulse: every shade within 160 px regains 12 HP, capped at its
+// max HP (so a boss can never be overhealed past full).
+function healPulse(state, healer) {
+  const R = 160;
+  healer.healPulse = 0.5;
+  for (const other of [...state.enemies]) {
+    if (other === healer) continue;
+    const d = Math.hypot(other.x - healer.x, other.y - healer.y);
+    if (d < R && other.hp < other.maxHp) {
+      other.hp = Math.min(other.maxHp, other.hp + 12);
+      spawnBurst(state, other.x, other.y, COLORS.healer, 3, 60, 0.4, 2);
+    }
+  }
+  spawnBurst(state, healer.x, healer.y, COLORS.healer, 10, 140, 0.5, 3);
 }
 
 function addScore(state, base, x, y) {
@@ -67,7 +126,21 @@ export function damageEnemy(state, enemy, dmg, random) {
   addScore(state, enemy.score, enemy.x, enemy.y);
   spawnBurst(state, enemy.x, enemy.y, COLORS[enemy.type] || '#ffffff', 16, 220, 0.6, 4);
   sfx.die();
-  dropPickup(state, enemy.x, enemy.y, random);
+  if (enemy.elite) {
+    // Elites always drop an ember, and often a star too — better than a
+    // normal kill. The kill also freezes the world for a beat (hit stop).
+    state.pickups.push({ kind: 'ember', x: enemy.x, y: enemy.y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
+    if (random() < 0.25) {
+      state.pickups.push({ kind: 'star', x: enemy.x, y: enemy.y, vx: (random() - 0.5) * 60, vy: (random() - 0.5) * 60, life: 12 });
+    }
+    state.hitStop = 0.07;
+  } else {
+    dropPickup(state, enemy.x, enemy.y, random);
+  }
+  // A bomber shot dead detonates the same way as an armed one.
+  if (enemy.type === 'bomber' && !enemy.exploding) {
+    explodeBomber(state, enemy, random);
+  }
   if (enemy.type === 'splitter') {
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
@@ -76,6 +149,7 @@ export function damageEnemy(state, enemy, dmg, random) {
   }
   if (enemy.type === 'boss') {
     state.boss = null;
+    state.hitStop = 0.12;
     addShake(state, 12);
     spawnBurst(state, enemy.x, enemy.y, COLORS.boss, 60, 320, 0.9, 5);
   }
@@ -127,8 +201,12 @@ export function updateEnemies(state, dt, random) {
   const p = state.player;
   for (let i = state.enemies.length - 1; i >= 0; i--) {
     const e = state.enemies[i];
+    // Another enemy's explosion (or a nova) may have removed this one
+    // mid-loop; skip the slot rather than touching a missing enemy.
+    if (!e) continue;
     e.t += dt;
     if (e.touchCd > 0) e.touchCd -= dt;
+    if (e.healPulse > 0) e.healPulse -= dt;
     const dx = p.x - e.x;
     const dy = p.y - e.y;
     const dist = Math.hypot(dx, dy) || 1;
@@ -155,6 +233,33 @@ export function updateEnemies(state, dt, random) {
       }
     } else if (e.type === 'splitter') {
       moveToward(e, p.x, p.y, e.speed, dt);
+    } else if (e.type === 'bomber') {
+      // Chases like a mote; inside 90 px it arms a 0.7 s fuse (flashing as a
+      // telegraph) and then detonates, hurting the player and other shades.
+      // While armed it creeps at 40% speed, so the fuse reads as a warning.
+      moveToward(e, p.x, p.y, e.armed ? e.speed * 0.4 : e.speed, dt);
+      if (!e.armed && dist < 90 && p.alive) {
+        e.armed = true;
+        e.fuse = 0.7;
+      }
+      if (e.armed) {
+        e.fuse -= dt;
+        if (e.fuse <= 0) explodeBomber(state, e, random);
+      }
+    } else if (e.type === 'healer') {
+      // Keeps its distance like a spitter, strafing in the middle band, and
+      // pulses a heal to nearby shades every 2.5 s.
+      if (dist < 260) moveToward(e, e.x - dx, e.y - dy, e.speed, dt);
+      else if (dist > 320) moveToward(e, p.x, p.y, e.speed, dt);
+      else {
+        e.x += (-dy / dist) * e.speed * 0.5 * dt;
+        e.y += (dx / dist) * e.speed * 0.5 * dt;
+      }
+      e.healCd -= dt;
+      if (e.healCd <= 0) {
+        healPulse(state, e);
+        e.healCd = 2.5;
+      }
     } else if (e.type === 'boss') {
       updateBoss(state, e, dt, random, dist, dx, dy);
     }

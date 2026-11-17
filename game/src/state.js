@@ -19,6 +19,8 @@ export function createState() {
     kills: 0,
     starTimer: 0,
     shake: 0,
+    novaFx: null, // {x, y, maxR, t, dur} while a nova ring expands
+    hitStop: 0, // seconds the world freezes on elite/boss kills
     draft: null, // [upgrade, upgrade, upgrade] while choosing
     upgradesOwned: [],
     player: {
@@ -42,6 +44,8 @@ export function createState() {
       invuln: 0,
       fireTimer: 0,
       regen: 0,
+      novaLevel: 0,
+      novaTimer: 0,
       alive: true,
     },
     enemies: [],

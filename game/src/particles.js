@@ -38,9 +38,9 @@ export function spawnTrail(state, x, y, color) {
   });
 }
 
-export function addText(state, x, y, text, color = '#f2f4ff') {
+export function addText(state, x, y, text, color = '#f2f4ff', size = 15) {
   if (state.texts.length >= MAX_TEXTS) state.texts.shift();
-  state.texts.push({ x, y, text, life: 0.9, maxLife: 0.9, color });
+  state.texts.push({ x, y, text, life: 0.9, maxLife: 0.9, color, size });
 }
 
 export function addShake(state, amount) {

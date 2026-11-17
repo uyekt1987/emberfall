@@ -94,6 +94,15 @@ export const UPGRADES = [
       p.regen += 1;
     },
   },
+  {
+    id: 'nova',
+    name: 'Nova Burst',
+    desc: 'Nova blast every 6s: 40 damage in 170px',
+    max: 3,
+    apply(p) {
+      p.novaLevel += 1;
+    },
+  },
 ];
 
 function ownedCount(state, id) {

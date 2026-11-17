@@ -18,6 +18,8 @@ export function stageShot(name, state, random) {
       ['splitter', 420, 500],
       ['mote', 640, 150],
       ['husk', 1120, 380],
+      ['bomber', 760, 560],
+      ['healer', 520, 160],
     ];
     for (const [type, x, y] of spots) spawnEnemy(state, type, x, y, 3);
     return { screen: SCREEN_TITLE, best: 0 };
@@ -36,19 +38,24 @@ export function stageShot(name, state, random) {
     state.player.y = 380;
     state.player.angle = -0.6;
     state.player.fireTimer = 0;
+    // Nova Burst level 1, mid-ring, so the gold ring reads in the shot.
+    state.player.novaLevel = 1;
+    state.novaFx = { x: 640, y: 380, maxR: 170, t: 0.2, dur: 0.45 };
     const foes = [
       ['mote', 820, 300],
       ['mote', 760, 420],
       ['wisp', 940, 260],
       ['spitter', 1020, 480],
       ['splitter', 480, 260],
-      ['husk', 380, 470],
+      ['husk', 380, 470, true],
       ['mote', 560, 180],
       ['wisp', 700, 540],
       ['mote', 1060, 360],
       ['spitter', 240, 320],
+      ['bomber', 880, 300],
+      ['healer', 300, 540],
     ];
-    for (const [type, x, y] of foes) spawnEnemy(state, type, x, y, 4);
+    for (const [type, x, y, elite] of foes) spawnEnemy(state, type, x, y, 4, !!elite);
     state.spawnQueue = ['mote', 'wisp', 'mote', 'spitter', 'mote'];
     for (let i = 0; i < 5; i++) {
       const a = -0.6 + (i - 2) * 0.09;
@@ -84,6 +91,7 @@ export function stageShot(name, state, random) {
   state.player.y = 360;
   spawnBurst(state, 640, 300, '#e0aaff', 40, 300, 0.9, 5);
   spawnBurst(state, 640, 360, '#ffb43a', 24, 220, 0.8, 4);
+  spawnBurst(state, 640, 330, '#ffd700', 30, 260, 0.9, 4);
   state.draft = null;
   return { screen: SCREEN_WIN, best: 8420 };
 }

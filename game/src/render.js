@@ -44,6 +44,7 @@ export function createRenderer(canvas) {
       if (state.player.alive && screen !== SCREEN_TITLE) drawPlayer(ctx, state, nowMs);
       drawBullets(ctx, state);
       drawParticles(ctx, state);
+      drawNova(ctx, state);
       drawTexts(ctx, state);
       if (screen === SCREEN_PLAY || screen === SCREEN_DRAFT || screen === SCREEN_PAUSED) drawHud(ctx, state, best);
       if (screen === SCREEN_TITLE) drawTitle(ctx, state, best);
@@ -79,9 +80,9 @@ function drawField(ctx, nowMs) {
   for (let x = 80; x < W; x += 160) {
     for (let y = 80; y < H; y += 160) {
       const breathe = 0.5 + 0.5 * Math.sin(nowMs / 900 + (x + y) / 90);
-      ctx.fillStyle = `rgba(255,210,122,${0.1 + breathe * 0.12})`;
+      ctx.fillStyle = `rgba(255,210,122,${0.16 + breathe * 0.18})`;
       ctx.beginPath();
-      ctx.arc(x, y, 4 + breathe * 2, 0, Math.PI * 2);
+      ctx.arc(x, y, 5 + breathe * 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -174,6 +175,58 @@ function drawEnemies(ctx, state, nowMs) {
       ctx.fill();
     } else if (e.type === 'husk') {
       ctx.fillRect(e.x - e.r, e.y - e.r, e.r * 2, e.r * 2);
+    } else if (e.type === 'bomber') {
+      // Spiked circle with a pulsing core; while the fuse is armed it flashes
+      // white/orange as a telegraph before it blows.
+      const pulse = 1 + 0.15 * Math.sin(nowMs / 120);
+      ctx.fillStyle = e.armed && Math.sin(nowMs / 70) > 0 ? '#ffffff' : color;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + e.t;
+        const a2 = a + 0.35;
+        ctx.moveTo(e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r);
+        ctx.lineTo(e.x + Math.cos(a) * (e.r + 7), e.y + Math.sin(a) * (e.r + 7));
+        ctx.lineTo(e.x + Math.cos(a2) * e.r, e.y + Math.sin(a2) * e.r);
+      }
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * 0.75 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff3d6';
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * 0.3 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      if (e.armed) {
+        // Fuse ring: it closes in and brightens as the 0.7 s fuse burns down.
+        const fp = Math.max(0, Math.min(1, e.fuse / 0.7));
+        ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.65 * (1 - fp)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.r + 8 + (1 - fp) * 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else if (e.type === 'healer') {
+      // Soft lime glow, then a plus/cross mark. While a heal pulse is out,
+      // an expanding green ring shows the radius it just healed.
+      const g = ctx.createRadialGradient(e.x, e.y, 2, e.x, e.y, e.r + 12);
+      g.addColorStop(0, 'rgba(184,255,46,0.35)');
+      g.addColorStop(1, 'rgba(184,255,46,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r + 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      const w = e.r * 0.45;
+      ctx.fillRect(e.x - w, e.y - e.r, w * 2, e.r * 2);
+      ctx.fillRect(e.x - e.r, e.y - w, e.r * 2, w * 2);
+      if (e.healPulse > 0) {
+        const p = 1 - e.healPulse / 0.5;
+        ctx.strokeStyle = `rgba(184,255,46,${1 - p})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 20 + p * 140, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     } else if (e.type === 'boss') {
       ctx.beginPath();
       ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
@@ -189,8 +242,16 @@ function drawEnemies(ctx, state, nowMs) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    // Elites wear a gold ring so the player can spot the triple-HP threat.
+    if (e.elite) {
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     // Health bar for the tough ones.
-    if ((e.type === 'husk' || e.type === 'boss') && e.hp < e.maxHp) {
+    if ((e.type === 'husk' || e.type === 'boss' || e.elite) && e.hp < e.maxHp) {
       const w = e.type === 'boss' ? 120 : 44;
       const x = e.x - w / 2;
       const y = e.y - e.r - 12;
@@ -274,10 +335,26 @@ function drawParticles(ctx, state) {
   ctx.globalCompositeOperation = 'source-over';
 }
 
+function drawNova(ctx, state) {
+  const fx = state.novaFx;
+  if (!fx) return;
+  const p = Math.min(1, fx.t / fx.dur);
+  ctx.strokeStyle = `rgba(255,210,122,${1 - p})`;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(fx.x, fx.y, Math.max(1, fx.maxR * p), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = `rgba(255,210,122,${(1 - p) * 0.5})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(fx.x, fx.y, Math.max(1, fx.maxR * p * 0.7), 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 function drawTexts(ctx, state) {
   ctx.textAlign = 'center';
-  ctx.font = FONT(15);
   for (const t of state.texts) {
+    ctx.font = FONT(t.size || 15);
     ctx.globalAlpha = Math.max(0, t.life / t.maxLife);
     ctx.fillStyle = t.color;
     ctx.fillText(t.text, t.x, t.y);
@@ -332,6 +409,18 @@ function drawHud(ctx, state, best) {
   ctx.fillStyle = COLORS.text;
   ctx.font = FONT(13, 500);
   ctx.fillText(dashReady ? 'DASH ready — Space' : 'DASH recharging', 24, H - 48);
+  // Nova Burst, bottom left above the dash bar, once the upgrade is owned.
+  if (p.novaLevel > 0) {
+    const cd = 6 - (p.novaLevel - 1) * 0.7;
+    const frac = Math.max(0, Math.min(1, 1 - p.novaTimer / cd));
+    ctx.fillStyle = COLORS.hpBg;
+    ctx.fillRect(24, H - 64, 120, 10);
+    ctx.fillStyle = frac >= 1 ? '#ffd27a' : COLORS.dim;
+    ctx.fillRect(24, H - 64, 120 * frac, 10);
+    ctx.fillStyle = COLORS.text;
+    ctx.font = FONT(13, 500);
+    ctx.fillText(frac >= 1 ? `NOVA Lv${p.novaLevel} ready` : `NOVA Lv${p.novaLevel} charging`, 24, H - 72);
+  }
   // Upgrades owned, bottom right.
   const owned = state.upgradesOwned;
   if (owned.length > 0) {
