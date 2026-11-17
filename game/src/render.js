@@ -1,10 +1,19 @@
 // The renderer: one canvas, a logical 1280x720 field scaled to fit, and every
 // screen — field, entities, HUD, menus and the upgrade draft — painted from
 // the state. Nothing here mutates state.
+//
+// Visual identity (visual polish pass): the field is the layered lantern
+// garden from background.js, and every creature is a chunky pixel-art sprite
+// from sprites.js — the warden, the shades and the Hollow King are shapes you
+// can tell apart at a glance, not coloured geometry. Gameplay drawing that
+// carries information — elite gold rings, health bars, the bomber fuse ring,
+// the healer pulse ring, the nova ring — is kept exactly as before.
 
 import { COLORS, H, TOTAL_WAVES, W } from './config.js';
 import { computeView } from './view.js';
 import { shakeOffset } from './particles.js';
+import { drawBackground } from './background.js';
+import { drawSprite } from './sprites.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -38,7 +47,7 @@ export function createRenderer(canvas) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const shake = shakeOffset(state);
       ctx.setTransform(view.scale, 0, 0, view.scale, view.ox + shake.x * view.scale, view.oy + shake.y * view.scale);
-      drawField(ctx, nowMs);
+      drawBackground(ctx, state.player.x, state.player.y, nowMs);
       drawPickups(ctx, state);
       drawEnemies(ctx, state, nowMs);
       if (state.player.alive && screen !== SCREEN_TITLE) drawPlayer(ctx, state, nowMs);
@@ -47,60 +56,13 @@ export function createRenderer(canvas) {
       drawNova(ctx, state);
       drawTexts(ctx, state);
       if (screen === SCREEN_PLAY || screen === SCREEN_DRAFT || screen === SCREEN_PAUSED) drawHud(ctx, state, best);
-      if (screen === SCREEN_TITLE) drawTitle(ctx, state, best);
+      if (screen === SCREEN_TITLE) drawTitle(ctx, state, best, nowMs);
       if (screen === SCREEN_DRAFT) drawDraft(ctx, state);
       if (screen === SCREEN_PAUSED) drawCenter(ctx, 'PAUSED', 'P or Esc to resume — M to mute');
-      if (screen === SCREEN_OVER) drawEnd(ctx, state, best, false);
-      if (screen === SCREEN_WIN) drawEnd(ctx, state, best, true);
+      if (screen === SCREEN_OVER) drawEnd(ctx, state, best, false, nowMs);
+      if (screen === SCREEN_WIN) drawEnd(ctx, state, best, true, nowMs);
     },
   };
-}
-
-function drawField(ctx, nowMs) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, COLORS.bg1);
-  g.addColorStop(1, COLORS.bg0);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  // Lantern posts on a grid, with a soft glow that breathes.
-  ctx.strokeStyle = COLORS.grid;
-  ctx.lineWidth = 1;
-  for (let x = 80; x < W; x += 160) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
-  }
-  for (let y = 80; y < H; y += 160) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-  for (let x = 80; x < W; x += 160) {
-    for (let y = 80; y < H; y += 160) {
-      const breathe = 0.5 + 0.5 * Math.sin(nowMs / 900 + (x + y) / 90);
-      ctx.fillStyle = `rgba(255,210,122,${0.16 + breathe * 0.18})`;
-      ctx.beginPath();
-      ctx.arc(x, y, 5 + breathe * 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  // Ambient drifting embers.
-  for (let i = 0; i < 14; i++) {
-    const x = ((i * 173 + nowMs * 0.008) % (W + 40)) - 20;
-    const y = 60 + ((i * 97) % (H - 120)) + Math.sin(nowMs / 1400 + i) * 8;
-    ctx.fillStyle = 'rgba(255,157,46,0.35)';
-    ctx.beginPath();
-    ctx.arc(x, y, 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Vignette.
-  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.85);
-  v.addColorStop(0, 'rgba(0,0,0,0)');
-  v.addColorStop(1, 'rgba(0,0,0,0.45)');
-  ctx.fillStyle = v;
-  ctx.fillRect(0, 0, W, H);
 }
 
 function drawPickups(ctx, state) {
@@ -140,111 +102,41 @@ function drawStar(ctx, x, y, r, points) {
 
 function drawEnemies(ctx, state, nowMs) {
   for (const e of state.enemies) {
-    const color = COLORS[e.type] || '#ffffff';
+    // The boss flashes while it telegraphs a charge.
     const flash = e.type === 'boss' && e.mode === 'telegraph' ? (Math.sin(nowMs / 60) > 0 ? 1 : 0.4) : 1;
     ctx.globalAlpha = flash;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    if (e.type === 'mote') {
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (e.type === 'wisp') {
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(e.x - 3, e.y - 3, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-    } else if (e.type === 'spitter') {
-      ctx.beginPath();
-      ctx.moveTo(e.x, e.y - e.r);
-      ctx.lineTo(e.x + e.r, e.y);
-      ctx.lineTo(e.x, e.y + e.r);
-      ctx.lineTo(e.x - e.r, e.y);
-      ctx.closePath();
-      ctx.fill();
-    } else if (e.type === 'splitter') {
-      ctx.beginPath();
-      ctx.moveTo(e.x, e.y - e.r);
-      ctx.lineTo(e.x + e.r, e.y + e.r * 0.8);
-      ctx.lineTo(e.x - e.r, e.y + e.r * 0.8);
-      ctx.closePath();
-      ctx.fill();
-    } else if (e.type === 'husk') {
-      ctx.fillRect(e.x - e.r, e.y - e.r, e.r * 2, e.r * 2);
-    } else if (e.type === 'bomber') {
-      // Spiked circle with a pulsing core; while the fuse is armed it flashes
-      // white/orange as a telegraph before it blows.
-      const pulse = 1 + 0.15 * Math.sin(nowMs / 120);
-      ctx.fillStyle = e.armed && Math.sin(nowMs / 70) > 0 ? '#ffffff' : color;
-      ctx.beginPath();
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2 + e.t;
-        const a2 = a + 0.35;
-        ctx.moveTo(e.x + Math.cos(a) * e.r, e.y + Math.sin(a) * e.r);
-        ctx.lineTo(e.x + Math.cos(a) * (e.r + 7), e.y + Math.sin(a) * (e.r + 7));
-        ctx.lineTo(e.x + Math.cos(a2) * e.r, e.y + Math.sin(a2) * e.r);
-      }
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r * 0.75 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#fff3d6';
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r * 0.3 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-      if (e.armed) {
-        // Fuse ring: it closes in and brightens as the 0.7 s fuse burns down.
-        const fp = Math.max(0, Math.min(1, e.fuse / 0.7));
-        ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.65 * (1 - fp)})`;
-        ctx.lineWidth = 2;
+    // Pixel-art sprite, chunky at ~2.6x the collision radius. Elites wear
+    // the baked gold outline as well as the gold ring below.
+    drawSprite(ctx, e.type, e.x, e.y, e.r * 2.6, nowMs, { elite: e.elite });
+    ctx.globalAlpha = 1;
+    if (e.type === 'bomber' && e.armed) {
+      // The fuse burns: the sprite flashes white-hot and the ring closes in
+      // and brightens over the 0.7 s fuse.
+      if (Math.sin(nowMs / 70) > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.r + 8 + (1 - fp) * 6, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.arc(e.x, e.y, e.r * 1.2, 0, Math.PI * 2);
+        ctx.fill();
       }
-    } else if (e.type === 'healer') {
-      // Soft lime glow, then a plus/cross mark. While a heal pulse is out,
-      // an expanding green ring shows the radius it just healed.
-      const g = ctx.createRadialGradient(e.x, e.y, 2, e.x, e.y, e.r + 12);
-      g.addColorStop(0, 'rgba(184,255,46,0.35)');
-      g.addColorStop(1, 'rgba(184,255,46,0)');
-      ctx.fillStyle = g;
+      const fp = Math.max(0, Math.min(1, e.fuse / 0.7));
+      ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.65 * (1 - fp)})`;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r + 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = color;
-      const w = e.r * 0.45;
-      ctx.fillRect(e.x - w, e.y - e.r, w * 2, e.r * 2);
-      ctx.fillRect(e.x - e.r, e.y - w, e.r * 2, w * 2);
-      if (e.healPulse > 0) {
-        const p = 1 - e.healPulse / 0.5;
-        ctx.strokeStyle = `rgba(184,255,46,${1 - p})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, 20 + p * 140, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    } else if (e.type === 'boss') {
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
+      ctx.arc(e.x, e.y, e.r + 8 + (1 - fp) * 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (e.type === 'healer' && e.healPulse > 0) {
+      // The expanding green ring shows the radius the pulse just healed.
+      const p = 1 - e.healPulse / 0.5;
+      ctx.strokeStyle = `rgba(184,255,46,${1 - p})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r * 0.62, 0, Math.PI * 2);
+      ctx.arc(e.x, e.y, 20 + p * 140, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#2a0a2e';
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.r * 0.3, 0, Math.PI * 2);
-      ctx.fill();
     }
-    ctx.globalAlpha = 1;
     // Elites wear a gold ring so the player can spot the triple-HP threat.
     if (e.elite) {
-      ctx.strokeStyle = '#ffd700';
+      ctx.strokeStyle = COLORS.gold;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(e.x, e.y, e.r + 4, 0, Math.PI * 2);
@@ -267,35 +159,24 @@ function drawPlayer(ctx, state, nowMs) {
   const p = state.player;
   const blink = p.invuln > 0 && Math.sin(nowMs / 50) > 0 ? 0.45 : 1;
   ctx.globalAlpha = blink;
-  // Glow.
-  const g = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, 44);
-  g.addColorStop(0, 'rgba(255,180,58,0.5)');
+  // The warden's lantern glow: a warm pool that breathes with the flame.
+  const breathe = 0.85 + 0.15 * Math.sin(nowMs / 700);
+  const g = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, 58);
+  g.addColorStop(0, `rgba(255,180,58,${0.5 * breathe})`);
   g.addColorStop(1, 'rgba(255,180,58,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 44, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 58, 0, Math.PI * 2);
   ctx.fill();
-  // Body.
-  ctx.fillStyle = COLORS.player;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
-  ctx.fill();
-  // Flame ring, rotating.
-  ctx.strokeStyle = COLORS.playerRing;
-  ctx.lineWidth = 3;
-  const a0 = nowMs / 500;
-  for (let i = 0; i < 3; i++) {
-    const a = a0 + (i / 3) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 21, a, a + 1.1);
-    ctx.stroke();
-  }
-  // Aim tick.
+  // The warden sprite, turned to face the aim. The grid faces up, so the
+  // aim angle needs a quarter turn.
+  drawSprite(ctx, 'player', p.x, p.y, 52, nowMs, { angle: p.angle + Math.PI / 2 });
+  // Aim tick, just past the lantern.
   ctx.strokeStyle = '#fff3d6';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(p.x + Math.cos(p.angle) * 20, p.y + Math.sin(p.angle) * 20);
-  ctx.lineTo(p.x + Math.cos(p.angle) * 30, p.y + Math.sin(p.angle) * 30);
+  ctx.moveTo(p.x + Math.cos(p.angle) * 26, p.y + Math.sin(p.angle) * 26);
+  ctx.lineTo(p.x + Math.cos(p.angle) * 36, p.y + Math.sin(p.angle) * 36);
   ctx.stroke();
   ctx.globalAlpha = 1;
 }
@@ -443,27 +324,54 @@ function drawCenter(ctx, title, sub) {
   ctx.fillText(sub, W / 2, H / 2 + 34);
 }
 
-function drawTitle(ctx, state, best) {
+// A row of tiny pixel lanterns — the motif under the title and end screens.
+function drawLanternRow(ctx, cx, y, count, gap) {
+  const x0 = cx - ((count - 1) * gap) / 2;
+  for (let i = 0; i < count; i++) {
+    const x = x0 + i * gap;
+    ctx.fillStyle = '#241a33';
+    ctx.fillRect(x - 5, y - 6, 10, 11);
+    ctx.fillStyle = COLORS.lantern;
+    ctx.fillRect(x - 3, y - 4, 6, 7);
+    ctx.fillStyle = '#fff3d6';
+    ctx.fillRect(x - 1, y - 2, 2, 3);
+  }
+}
+
+function drawTitle(ctx, state, best, nowMs) {
   ctx.fillStyle = 'rgba(8,10,24,0.45)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
+  // The title glows like a lantern.
+  ctx.shadowColor = COLORS.titleGlow;
+  ctx.shadowBlur = 32;
   ctx.fillStyle = COLORS.lantern;
   ctx.font = FONT(84);
   ctx.fillText('EMBERFALL', W / 2, 250);
+  ctx.shadowBlur = 0;
+  // A thin gold rule under the title.
+  ctx.fillStyle = COLORS.gold;
+  ctx.fillRect(W / 2 - 130, 272, 260, 3);
   ctx.fillStyle = COLORS.text;
   ctx.font = FONT(22, 500);
-  ctx.fillText('The last Ember Warden. Ten waves of shade. One fading light.', W / 2, 296);
+  ctx.fillText('The last Ember Warden. Ten waves of shade. One fading light.', W / 2, 316);
   ctx.fillStyle = COLORS.dim;
   ctx.font = FONT(17, 500);
-  ctx.fillText('WASD move  ·  Mouse aim  ·  Click or hold to shoot  ·  Space dash  ·  P pause  ·  M mute', W / 2, 350);
+  ctx.fillText('WASD move  ·  Mouse aim  ·  Click or hold to shoot  ·  Space dash  ·  P pause  ·  M mute', W / 2, 352);
   ctx.fillStyle = COLORS.player;
   ctx.font = FONT(24);
-  ctx.fillText('Click or press Space to start', W / 2, 420);
+  ctx.fillText('Click or press Space to start', W / 2, 408);
   if (best > 0) {
     ctx.fillStyle = COLORS.dim;
     ctx.font = FONT(17, 500);
-    ctx.fillText(`Best score: ${best}`, W / 2, 462);
+    ctx.fillText(`Best score: ${best}`, W / 2, 448);
   }
+  // The warden stands below the text, flanked by two shades — the cast, in
+  // one look.
+  drawSprite(ctx, 'player', W / 2, 540, 72, nowMs);
+  drawSprite(ctx, 'mote', W / 2 - 130, 552, 36, nowMs);
+  drawSprite(ctx, 'wisp', W / 2 + 130, 552, 36, nowMs);
+  drawLanternRow(ctx, W / 2, 622, 7, 26);
 }
 
 export function layoutDraft() {
@@ -480,9 +388,12 @@ function drawDraft(ctx, state) {
   ctx.fillStyle = 'rgba(8,10,24,0.62)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
+  ctx.shadowColor = COLORS.titleGlow;
+  ctx.shadowBlur = 18;
   ctx.fillStyle = COLORS.text;
   ctx.font = FONT(34);
   ctx.fillText(`WAVE ${state.wave} CLEARED`, W / 2, 190);
+  ctx.shadowBlur = 0;
   ctx.font = FONT(19, 500);
   ctx.fillStyle = COLORS.dim;
   ctx.fillText('Choose an upgrade — click a card, or press 1, 2 or 3', W / 2, 222);
@@ -494,34 +405,52 @@ function drawDraft(ctx, state) {
     ctx.strokeStyle = COLORS.cardEdge;
     ctx.lineWidth = 2;
     ctx.strokeRect(r.x, r.y, r.w, r.h);
+    // A lit top edge, like a lantern's rim.
+    ctx.fillStyle = COLORS.lantern;
+    ctx.fillRect(r.x, r.y, r.w, 4);
     ctx.fillStyle = COLORS.lantern;
     ctx.font = FONT(15, 500);
-    ctx.fillText(`[ ${i + 1} ]`, r.x + r.w / 2, r.y + 34);
+    ctx.fillText(`[ ${i + 1} ]`, r.x + r.w / 2, r.y + 38);
     ctx.fillStyle = COLORS.text;
     ctx.font = FONT(22);
-    ctx.fillText(u.name, r.x + r.w / 2, r.y + 76);
+    ctx.fillText(u.name, r.x + r.w / 2, r.y + 80);
     ctx.fillStyle = COLORS.dim;
     ctx.font = FONT(16, 500);
-    ctx.fillText(u.desc, r.x + r.w / 2, r.y + 112);
+    ctx.fillText(u.desc, r.x + r.w / 2, r.y + 116);
   });
 }
 
-function drawEnd(ctx, state, best, won) {
+function drawEnd(ctx, state, best, won, nowMs) {
   ctx.fillStyle = 'rgba(8,10,24,0.66)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
+  ctx.shadowColor = won ? COLORS.titleGlow : 'rgba(255,93,93,0.5)';
+  ctx.shadowBlur = 26;
   ctx.fillStyle = won ? COLORS.lantern : COLORS.hp;
   ctx.font = FONT(52);
-  ctx.fillText(won ? 'THE GARDEN BURNS BRIGHT' : 'THE EMBER DIES', W / 2, 260);
+  ctx.fillText(won ? 'THE GARDEN BURNS BRIGHT' : 'THE EMBER DIES', W / 2, 250);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = COLORS.gold;
+  ctx.fillRect(W / 2 - 110, 270, 220, 3);
   ctx.fillStyle = COLORS.text;
   ctx.font = FONT(20, 500);
-  ctx.fillText(won ? 'All ten waves survived. The lantern garden lives.' : `Fell on wave ${Math.max(1, state.wave)} of ${TOTAL_WAVES}.`, W / 2, 306);
+  ctx.fillText(won ? 'All ten waves survived. The lantern garden lives.' : `Fell on wave ${Math.max(1, state.wave)} of ${TOTAL_WAVES}.`, W / 2, 308);
   ctx.font = FONT(30);
-  ctx.fillText(`SCORE ${state.score}`, W / 2, 368);
+  ctx.fillText(`SCORE ${state.score}`, W / 2, 366);
   ctx.font = FONT(18, 500);
   ctx.fillStyle = COLORS.dim;
-  ctx.fillText(`Best ${Math.max(best, state.score)}  ·  ${state.kills} shades banished`, W / 2, 404);
+  ctx.fillText(`Best ${Math.max(best, state.score)}  ·  ${state.kills} shades banished`, W / 2, 402);
   ctx.fillStyle = COLORS.player;
   ctx.font = FONT(22);
-  ctx.fillText('Press R or click to play again', W / 2, 462);
+  ctx.fillText('Press R or click to play again', W / 2, 452);
+  // The warden, lantern still lit, under the victory — or a lone shade where
+  // the light went out.
+  if (won) {
+    drawSprite(ctx, 'player', W / 2, 540, 72, nowMs);
+    drawLanternRow(ctx, W / 2, 612, 7, 26);
+  } else {
+    ctx.globalAlpha = 0.7;
+    drawSprite(ctx, 'mote', W / 2, 540, 56, nowMs);
+    ctx.globalAlpha = 1;
+  }
 }

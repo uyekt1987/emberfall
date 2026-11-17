@@ -20,6 +20,7 @@ export function stageShot(name, state, random) {
       ['husk', 1120, 380],
       ['bomber', 760, 560],
       ['healer', 520, 160],
+      ['mote', 1080, 580, true], // elite: gold outline + gold ring on show
     ];
     for (const [type, x, y] of spots) spawnEnemy(state, type, x, y, 3);
     return { screen: SCREEN_TITLE, best: 0 };
@@ -54,8 +55,16 @@ export function stageShot(name, state, random) {
       ['spitter', 240, 320],
       ['bomber', 880, 300],
       ['healer', 300, 540],
+      ['wisp', 1120, 620, true], // elite wisp: gold outline + ring
+      ['bomber', 1010, 580], // armed below: fuse ring on show
     ];
     for (const [type, x, y, elite] of foes) spawnEnemy(state, type, x, y, 4, !!elite);
+    // Arm the last bomber so its fuse telegraph reads in the shot.
+    const armedBomber = state.enemies.find((e) => e.type === 'bomber' && e.x === 1010);
+    if (armedBomber) {
+      armedBomber.armed = true;
+      armedBomber.fuse = 0.45;
+    }
     state.spawnQueue = ['mote', 'wisp', 'mote', 'spitter', 'mote'];
     for (let i = 0; i < 5; i++) {
       const a = -0.6 + (i - 2) * 0.09;
@@ -89,6 +98,12 @@ export function stageShot(name, state, random) {
   state.combo = 0;
   state.player.x = 640;
   state.player.y = 360;
+  // The fallen Hollow King and the last shades, still standing behind the
+  // victory screen, so the end shot shows the full cast.
+  spawnEnemy(state, 'boss', 210, 540, 10);
+  spawnEnemy(state, 'mote', 1070, 520, 10);
+  spawnEnemy(state, 'wisp', 990, 610, 10);
+  spawnEnemy(state, 'healer', 290, 620, 10);
   spawnBurst(state, 640, 300, '#e0aaff', 40, 300, 0.9, 5);
   spawnBurst(state, 640, 360, '#ffb43a', 24, 220, 0.8, 4);
   spawnBurst(state, 640, 330, '#ffd700', 30, 260, 0.9, 4);

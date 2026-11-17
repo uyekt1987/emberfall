@@ -7,17 +7,33 @@ export const BEST_KEY = 'emberfall.best';
 export const TOTAL_WAVES = 10;
 
 export const COLORS = {
-  bg0: '#0b0e1e',
-  bg1: '#141a33',
+  // Sky and field — one dusk: deep indigo above, warm amber at the horizon.
+  bg0: '#0b0e1e', // deepest indigo, canvas edge
+  bg1: '#141a33', // indigo mid, sky body
+  skyTop: '#0d1026', // sky, top
+  skyHorizon: '#3a2340', // sky, horizon — dusk purple-amber
   grid: 'rgba(120,140,255,0.07)',
-  post: 'rgba(150,170,255,0.16)',
+  post: '#241a33', // lantern post wood
+  tree: '#0a0d1c', // far tree silhouettes
+  treeEdge: '#131a33', // far tree silhouettes, lighter set
+  fence: '#1a1430', // garden fence
+  grass: '#1d4a30', // ground grass
+  grassDark: '#143522', // ground grass, darker set
+  stone: '#3a4066', // ground stones
+  mushroom: '#7ee0ff', // glow mushroom caps
+  mushroomGlow: 'rgba(126,224,255,0.25)',
+  // Warm light — the lantern side of the palette.
   lantern: '#ffd27a',
   player: '#ffb43a',
   playerRing: '#ff7a1a',
   bullet: '#ffe9a8',
-  orb: '#c77dff',
   ember: '#ff9d2e',
   star: '#ffe95e',
+  gold: '#ffd700', // elite outlines, title accents
+  elite: '#ffd700',
+  titleGlow: 'rgba(255,180,58,0.55)',
+  // The shades — each enemy keeps its own cold or hot hue against the indigo.
+  orb: '#c77dff',
   mote: '#7ee0ff',
   wisp: '#9d8cff',
   spitter: '#ff6b9d',
@@ -26,6 +42,7 @@ export const COLORS = {
   bomber: '#ff8c1a',
   healer: '#b8ff2e',
   boss: '#e0aaff',
+  // UI.
   text: '#f2f4ff',
   dim: '#9aa3c7',
   hp: '#ff5d5d',
